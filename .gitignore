@@ -1,0 +1,13 @@
+# MPASM assembler output and temporary files
+*.HEX
+*.hex
+*.COD
+*.cod
+*.ERR
+*.err
+*.LST
+*.lst
+*.O
+*.o
+___*.fil
+___*.FIL
