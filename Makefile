@@ -16,7 +16,12 @@ TARGETS = fred4k_f.HEX fred_f.HEX fred_c.HEX ftest_f.HEX ftest_c.HEX
 # Include dependencies
 DEPS = $(wildcard *.inc) $(wildcard *.INC)
 
-.PHONY: all clean distclean check_symlinks
+# PICkit 2 programming settings
+DEVICE ?= PIC16F84A
+READOUT ?= readout.hex
+HEX ?= fred_f.HEX
+
+.PHONY: all clean distclean check_symlinks read_flash upgrade_flash
 
 all: check_symlinks $(TARGETS)
 
@@ -34,3 +39,9 @@ clean:
 	rm -f *.COD *.ERR *.LST *.O *.cod *.err *.lst *.o ___*.fil ___*.FIL *.HEX *.hex
 
 distclean: clean
+
+read_flash:
+	pk2cmd -P$(DEVICE) -GF$(READOUT)
+
+upgrade_flash:
+	pk2cmd -P$(DEVICE) -MP -F$(HEX)
