@@ -43,5 +43,11 @@ distclean: clean
 read_flash:
 	pk2cmd -P$(DEVICE) -GF$(READOUT)
 
+flash:
+	pk2cmd -P$(DEVICE) -E -M -F$(HEX)
+
 upgrade_flash:
-	pk2cmd -P$(DEVICE) -MP -F$(HEX)
+	pk2cmd -P$(DEVICE) -E -MP -Z -F$(HEX)
+
+restore_eeprom:
+	pk2cmd -P$(DEVICE) -ME -F readout.hex
