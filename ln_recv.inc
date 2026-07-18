@@ -179,7 +179,9 @@ ln_recv_masterbusy:
 ;*****************************************************************************
 ; "ln_recv_wait_reply" is a procedure that waits for a reply from the chief
 ; to the throttle. If the chief answeres, it answers before anybody else
-; is allowed to take the bus under controll
+; is allowed to take the bus under control. However, other command stations
+; might answer too early (still during carrier_detect) or too late (after bus
+; is formally free).
 ;
 ; Used Variable: ln_loop_counter
 ; Pseudo Code:
@@ -188,16 +190,18 @@ ln_recv_masterbusy:
 ; {
 ;	for (;;)
 ;	{
-;		do  check_timer();
-;		while (carrier_detect);
-;		lnstatus[wait_masterbusy]=1;
-;		ln_loop_counter=30;
+;		ln_status[wait_masterbusy]=1;
 ;		ln_status[recv_activity]=0;
+;		do
+;			if (loconet_rx is low) set_software_interrupt;
+;		while (carrier_detect);
+;		ln_loop_counter=250;
 ;		for (;;)
 ;		{
-;			delay one bittime;
 ;			if (ln_status[recv_activity])
 ;				break;
+;			check_timer();
+;			delay 200 usec;
 ;			ln_loop_counter--;
 ;			if (ln_loop_counter==0) 
 ;				return false;
@@ -207,29 +211,33 @@ ln_recv_masterbusy:
 ;	}
 ; }
 
-ln_recv_wait_reply:
-	;	clrf	debug_code
-		call	check_timer			; <-+    <-----------------------------+
-		SKPNOCARRIER				;   | wait for no carrier              |
-		goto	ln_recv_wait_reply		; >-+                                  |
-							;                                      A
-		bsf	lnstat_wait_masterbusy		;                                      |
-		movlw	30				; waiting W bit times for any message  |
-		movwf	ln_loop_counter			;                                      |
-		bcf	lnstat_recv_activity		; reset activity-bit                   |
-ln_rwr_loop:	DELAY	55				; <-+                                  |
-		btfsc	lnstat_recv_activity		;   |                                  |
-		 goto	ln_rwr_checkbusy		;   |	found activity >-+             |
-		decfsz	ln_loop_counter,F		;   |                    |             |
-		 goto	ln_rwr_loop			; >-+                    |             |
-	;	movlw	debug_code_reply_timeout	;			 |	       |
-	;	movwf	debug_code			;			 |	       |
-		bsf	lnstat_recverror		;			 |             |
-		return					;	timed out        |             |
-							;                        |             A
-ln_rwr_checkbusy:					;                        |             |
-		btfsc	lnstat_wait_masterbusy		; <----------------------+             |
-		 return					;                                      |
-		goto	ln_recv_wait_reply		; master busy received, retry >--------+
+ln_recv_wait_reply:                                     ; <------------------------------------+
+        ;       clrf    debug_code                      ;                                      |
+                bsf     lnstat_wait_masterbusy          ; Setup wait_masterbusy early          |
+                bcf     lnstat_recv_activity            ; Clear activity flag early            |
+ln_recv_carrier_detect_loop:                            ; <-------------------+                |
+                btfss   loconet_rx                      ; is there a start bit coming?         |
+                 bsf    INTCON, INTF                    ; if yes, simulate edge interrupt      |
+                SKPNOCARRIER                            ; wait for no carrier |                |
+                goto    ln_recv_carrier_detect_loop     ; >-------------------+                |
+                                                        ;                                      A
+                movlw   250                             ; wait up to 50 ms (250 * 200 us)      |
+                movwf   ln_loop_counter                 ;                                      |
+ln_rwr_loop:                                            ; <-+                                  |
+                btfsc   lnstat_recv_activity            ; did we receive a packet?             |
+                 goto   ln_rwr_checkbusy                ;  yes, check and return-+ or retry    |
+                call    check_timer                     ; keep software timers running         |
+                DELAY   191                             ; 200 cycles delay minus actual insn   |
+                decfsz  ln_loop_counter,F               ;   |                    |             |
+                 goto   ln_rwr_loop                     ; >-+                    |             |
+        ;       movlw   debug_code_reply_timeout        ;                        |             |
+        ;       movwf   debug_code                      ;                        |             |
+                bsf     lnstat_recverror                ;                        |             |
+                return                                  ;       timed out        |             |
+                                                        ;                        |             A
+ln_rwr_checkbusy:                                       ;                        |             |
+                btfsc   lnstat_wait_masterbusy          ; <----------------------+             |
+                 return                                 ;                                      |
+                goto    ln_recv_wait_reply              ; master busy received, retry >--------+
 
 		ENDM
